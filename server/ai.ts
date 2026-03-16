@@ -104,11 +104,12 @@ export async function analyzeSupplementWithAI(
   inputContent: string
 ): Promise<SupplementAnalysisResult> {
   try {
+    const isImage = inputContent.startsWith("data:image/");
+    
     const prompt = `You are an expert supplement analyst with deep knowledge of clinical research, FDA guidelines, and evidence-based dosing.
+${isImage ? "Analyze the ingredients from the provided image label." : "Analyze the following supplement ingredients list:"}
 
-Analyze the following supplement ingredients and provide a comprehensive evaluation:
-
-${inputContent}
+${!isImage ? inputContent : ""}
 
 Respond with JSON in exactly this format:
 {
@@ -160,24 +161,32 @@ Rules:
 8. Use real brand names for alternatives (Nature Made, Garden of Life, Now Foods, Nordic Naturals, Doctor's Best, etc.)`;
 
     const openai = getOpenAI();
+    
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      {
+        role: "system",
+        content: "You are a supplement analysis expert. Analyze ingredients with scientific rigor and provide honest, evidence-based evaluations. Respond only with valid JSON.",
+      },
+      {
+        role: "user",
+        content: isImage 
+          ? [
+              { type: "text", text: prompt },
+              { type: "image_url", image_url: { url: inputContent } }
+            ]
+          : prompt,
+      }
+    ];
+
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a supplement analysis expert. Analyze ingredients with scientific rigor and provide honest, evidence-based evaluations. Respond only with valid JSON.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
+      messages,
       response_format: { type: "json_object" },
       max_completion_tokens: 2000,
     });
 
     const result = JSON.parse(response.choices[0].message.content || "{}");
+
     
     // Ensure score is within bounds
     result.score = Math.max(0, Math.min(100, result.score || 0));
