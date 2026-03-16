@@ -33,6 +33,8 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
+app.set('trust proxy', 1);
+
 app.use(session({
   store: new (PgSession(session))({
     pool,
@@ -44,10 +46,11 @@ app.use(session({
   cookie: { 
     secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     maxAge: 30 * 24 * 60 * 60 * 1000
   }
 }));
+
 
 app.use((req, res, next) => {
   const start = Date.now();
