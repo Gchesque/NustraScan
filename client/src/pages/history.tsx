@@ -21,7 +21,7 @@ export default function History() {
 
   const loadHistory = async () => {
     try {
-      const { getHistoryAPI } = await import("@/lib/api");
+      const { getHistoryAPI } = await import("../lib/api");
       const data = await getHistoryAPI();
       setHistory(data);
     } catch (error) {

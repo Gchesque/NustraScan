@@ -36,7 +36,7 @@ export default function Profile() {
 
   const loadUserStatus = async () => {
     try {
-      const { getUserStatusAPI } = await import("@/lib/api");
+      const { getUserStatusAPI } = await import("../lib/api");
       const status = await getUserStatusAPI();
       setUserStatus(status);
       if (status?.profile) {

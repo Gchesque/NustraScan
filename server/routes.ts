@@ -1,5 +1,6 @@
-import type { Express } from "express";
+import express, { type Express } from "express";
 import { createServer, type Server } from "http";
+import path from "path";
 import { storage } from "./storage";
 import { analyzeSupplementWithAI, getPersonalizedRecommendations } from "./ai";
 import Stripe from "stripe";
@@ -140,6 +141,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     next();
   });
+
+  // Serve static files from attached_assets
+  app.use("/attached_assets", express.static(path.resolve(import.meta.dirname, "..", "attached_assets")));
 
   // Get analysis by ID
   app.get("/api/analysis/:id", async (req, res) => {

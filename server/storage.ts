@@ -1,5 +1,7 @@
-import { type User, type InsertUser, type Analysis, type InsertAnalysis } from "@shared/schema";
+import { users, analyses, type User, type InsertUser, type Analysis, type InsertAnalysis } from "@shared/schema";
 import { randomUUID, createHash } from "crypto";
+import { db } from "./db";
+import { eq, and, desc } from "drizzle-orm";
 
 export interface IStorage {
   // User management
@@ -39,91 +41,61 @@ function hashPassword(password: string): string {
   return createHash("sha256").update(password).digest("hex");
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-  private analyses: Map<string, Analysis>;
-
-  constructor() {
-    this.users = new Map();
-    this.analyses = new Map();
-  }
-
-  // User methods
+export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.email === email,
-    );
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const now = new Date();
-    const user: User = { 
-      id,
-      email: insertUser.email,
-      passwordHash: insertUser.passwordHash || null,
-      name: null,
-      phone: null,
-      profileImage: null,
-      stripeCustomerId: null,
-      stripeSubscriptionId: null,
-      isPremium: false,
-      freeAnalysesUsed: 0,
-      age: null,
-      weight: null,
-      height: null,
-      gender: null,
-      healthGoals: null,
-      allergies: null,
-      medications: null,
-      activityLevel: null,
-      dietType: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.users.set(id, user);
+    const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }
 
   async verifyPassword(userId: string, password: string): Promise<boolean> {
-    const user = this.users.get(userId);
+    const user = await this.getUser(userId);
     if (!user || !user.passwordHash) return false;
     return user.passwordHash === hashPassword(password);
   }
 
   async updateUserStripeInfo(userId: string, customerId: string, subscriptionId: string): Promise<User> {
-    const user = this.users.get(userId);
+    const [user] = await db
+      .update(users)
+      .set({ 
+        stripeCustomerId: customerId, 
+        stripeSubscriptionId: subscriptionId,
+        isPremium: true,
+      })
+      .where(eq(users.id, userId))
+      .returning();
     if (!user) throw new Error("User not found");
-    
-    const updated = { 
-      ...user, 
-      stripeCustomerId: customerId, 
-      stripeSubscriptionId: subscriptionId,
-      isPremium: true,
-    };
-    this.users.set(userId, updated);
-    return updated;
+    return user;
   }
 
   async updateUserPremiumStatus(userId: string, isPremium: boolean): Promise<User> {
-    const user = this.users.get(userId);
+    const [user] = await db
+      .update(users)
+      .set({ isPremium })
+      .where(eq(users.id, userId))
+      .returning();
     if (!user) throw new Error("User not found");
-    
-    const updated = { ...user, isPremium };
-    this.users.set(userId, updated);
-    return updated;
+    return user;
   }
 
   async incrementFreeAnalyses(userId: string): Promise<User> {
-    const user = this.users.get(userId);
+    const user = await this.getUser(userId);
     if (!user) throw new Error("User not found");
     
-    const updated = { ...user, freeAnalysesUsed: user.freeAnalysesUsed + 1 };
-    this.users.set(userId, updated);
+    const [updated] = await db
+      .update(users)
+      .set({ freeAnalysesUsed: user.freeAnalysesUsed + 1 })
+      .where(eq(users.id, userId))
+      .returning();
     return updated;
   }
 
@@ -138,23 +110,24 @@ export class MemStorage implements IStorage {
     activityLevel?: string;
     dietType?: string;
   }): Promise<User> {
-    const user = this.users.get(userId);
+    const [user] = await db
+      .update(users)
+      .set({
+        age: profile.age,
+        weight: profile.weight,
+        height: profile.height,
+        gender: profile.gender,
+        healthGoals: profile.healthGoals,
+        allergies: profile.allergies,
+        medications: profile.medications,
+        activityLevel: profile.activityLevel,
+        dietType: profile.dietType,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
     if (!user) throw new Error("User not found");
-    
-    const updated = {
-      ...user,
-      age: profile.age ?? user.age,
-      weight: profile.weight ?? user.weight,
-      height: profile.height ?? user.height,
-      gender: profile.gender ?? user.gender,
-      healthGoals: profile.healthGoals ?? user.healthGoals,
-      allergies: profile.allergies ?? user.allergies,
-      medications: profile.medications ?? user.medications,
-      activityLevel: profile.activityLevel ?? user.activityLevel,
-      dietType: profile.dietType ?? user.dietType,
-    };
-    this.users.set(userId, updated);
-    return updated;
+    return user;
   }
 
   async updateUserAccountInfo(userId: string, info: {
@@ -163,58 +136,44 @@ export class MemStorage implements IStorage {
     phone?: string;
     profileImage?: string | null;
   }): Promise<User> {
-    const user = this.users.get(userId);
+    const [user] = await db
+      .update(users)
+      .set({
+        name: info.name,
+        email: info.email,
+        phone: info.phone,
+        profileImage: info.profileImage,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
     if (!user) throw new Error("User not found");
-    
-    const updated = {
-      ...user,
-      name: info.name ?? user.name,
-      email: info.email ?? user.email,
-      phone: info.phone ?? user.phone,
-      profileImage: info.profileImage !== undefined ? info.profileImage : user.profileImage,
-    };
-    this.users.set(userId, updated);
-    return updated;
+    return user;
   }
 
   // Analysis methods
   async createAnalysis(insertAnalysis: InsertAnalysis): Promise<Analysis> {
-    const id = randomUUID();
-    const analysis: Analysis = {
-      id,
-      userId: insertAnalysis.userId ?? null,
-      productName: insertAnalysis.productName,
-      brand: insertAnalysis.brand ?? null,
-      score: insertAnalysis.score,
-      inputType: insertAnalysis.inputType,
-      inputContent: insertAnalysis.inputContent,
-      ingredients: insertAnalysis.ingredients,
-      totalSavings: insertAnalysis.totalSavings ?? 0,
-      onlineAlternatives: insertAnalysis.onlineAlternatives ?? null,
-      localAlternatives: insertAnalysis.localAlternatives ?? null,
-      benefits: null,
-      monitorPrice: false,
-      targetPrice: null,
-      productImage: null,
-      createdAt: new Date(),
-    };
-    this.analyses.set(id, analysis);
+    const [analysis] = await db.insert(analyses).values(insertAnalysis).returning();
     return analysis;
   }
 
   async getAnalysis(id: string): Promise<Analysis | undefined> {
-    return this.analyses.get(id);
+    const [analysis] = await db.select().from(analyses).where(eq(analyses.id, id));
+    return analysis;
   }
 
   async getUserAnalyses(userId: string): Promise<Analysis[]> {
-    return Array.from(this.analyses.values())
-      .filter((analysis) => analysis.userId === userId)
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return db
+      .select()
+      .from(analyses)
+      .where(eq(analyses.userId, userId))
+      .orderBy(desc(analyses.createdAt));
   }
 
   async deleteAnalysis(id: string): Promise<void> {
-    this.analyses.delete(id);
+    await db.delete(analyses).where(eq(analyses.id, id));
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
+

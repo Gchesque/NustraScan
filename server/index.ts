@@ -28,20 +28,16 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: false, limit: '50mb' }));
 
-// Initialize PostgreSQL session store
-const pgPool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost/heliumdb',
-});
-
-const PostgresqlStore = PgSession(session);
-const store = new PostgresqlStore({
-  pool: pgPool,
-  createTableIfMissing: true,
-});
-
 // Session middleware for user tracking
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
+
 app.use(session({
-  store,
+  store: new (PgSession(session))({
+    pool,
+    createTableIfMissing: true,
+  }),
   secret: process.env.SESSION_SECRET || 'nutrascan-ai-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
